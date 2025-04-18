@@ -1,6 +1,7 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, SubmitField, TextAreaField
 from wtforms.validators import DataRequired, Length
+from markupsafe import Markup
 
 class PromptForm(FlaskForm):
     """Form for solar assistant prompts with validation"""
