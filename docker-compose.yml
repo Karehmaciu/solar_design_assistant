@@ -1,0 +1,16 @@
+version: "3"
+
+services:
+  solar_assistant:
+    build: .
+    ports:
+      - "8003:8003"
+    environment:
+      - FLASK_ENV=production
+      - PORT=8003
+      # For production, use secrets management or pass as environment variables
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - FLASK_SECRET=${FLASK_SECRET}
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped

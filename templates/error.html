@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error - Solar Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        .error-container {
+            text-align: center;
+            padding: 2rem;
+            margin: 2rem auto;
+            max-width: 600px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .error-icon {
+            font-size: 4rem;
+            color: #ff5252;
+            margin-bottom: 1rem;
+        }
+        .btn-home {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            margin-top: 20px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Solar Assistant</h1>
+        </header>
+        
+        <main>
+            <div class="error-container">
+                <div class="error-icon">⚠️</div>
+                <h2>Something went wrong</h2>
+                <p>{{ error }}</p>
+                <a href="{{ url_for('index') }}" class="btn-home">Return to Home</a>
+            </div>
+        </main>
+        
+        <footer>
+            <p>&copy; 2025 Solar Assistant</p>
+        </footer>
+    </div>
+</body>
+</html>

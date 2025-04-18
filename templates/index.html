@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Solar Design Assistant</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='styles.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+  </head>
+  <body>
+    <div class="container">
+      <div class="theme-switch-wrapper">
+        <span class="theme-icon"><i class="fas fa-moon"></i></span>
+        <label class="theme-switch">
+          <input type="checkbox" id="theme-toggle" />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <h1>☀️ Solar Design Assistant</h1>
+
+      {% if error %}
+      <div class="error-message">
+        <p>{{ error }}</p>
+      </div>
+      {% endif %}
+
+      <form method="POST" action="/">
+        {{ form.csrf_token }}
+
+        <div class="form-group">
+          {{ form.prompt.label }} {{ form.prompt(placeholder="✍️ Describe your
+          request in 3–5 bullet points. Include: your country/region, energy
+          needs (kWh/day or appliances), preferred battery type (if any), and
+          any special loads (e.g., pumps, air conditioning).") }} {% if
+          form.prompt.errors %}
+          <div class="errors">
+            {% for error in form.prompt.errors %}
+            <span class="error">{{ error }}</span>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+
+        {{ form.submit(class="btn-submit") }}
+      </form>
+
+      {% if response %}
+      <div class="response">
+        <h2>Response:</h2>
+        <div class="response-content">{{ response|safe }}</div>
+
+        <div class="buttons">
+          <a href="{{ url_for('download_report') }}" class="btn">
+            <i class="fas fa-download"></i> Download Report
+          </a>
+          <a href="{{ url_for('view_report') }}" class="btn">
+            <i class="fas fa-eye"></i> View Full Report
+          </a>
+          <a href="{{ url_for('clear') }}" class="btn">
+            <i class="fas fa-broom"></i> Clear Chat
+          </a>
+        </div>
+      </div>
+      {% endif %}
+
+      <footer class="footer">
+        <i>© 2025 Solar Assistant by karemaciu</i> |
+        <span id="status">Online</span>
+      </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

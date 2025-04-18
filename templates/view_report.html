@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>View Solar Report</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='styles.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+  </head>
+  <body>
+    <div class="container">
+      <div class="theme-switch-wrapper">
+        <span class="theme-icon"><i class="fas fa-moon"></i></span>
+        <label class="theme-switch">
+          <input type="checkbox" id="theme-toggle" />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <h1>📄 Solar System Design Report</h1>
+      <div class="response">
+        <form method="post">
+          <textarea name="report_text" class="report-text">
+{{ response }}</textarea
+          >
+          <div class="action-row">
+            <div class="main-buttons">
+              <button type="submit" class="btn save-btn">
+                <i class="fas fa-save"></i> Save
+              </button>
+              <a href="{{ url_for('download_report') }}" class="btn"
+                ><i class="fas fa-download"></i> Download</a
+              >
+              <a href="/" class="btn back-btn"
+                ><i class="fas fa-arrow-left"></i> Back</a
+              >
+              <div class="dropdown">
+                <button type="button" class="btn share-btn">
+                  <i class="fas fa-share-alt"></i> Share
+                </button>
+                <div id="shareDropdown" class="dropdown-content">
+                  <a href="mailto:?subject=Solar%20Report&body={{ share_url }}"
+                    ><i class="fas fa-envelope"></i> Email</a
+                  >
+                  <a
+                    href="https://www.linkedin.com/shareArticle?mini=true&url={{ share_url }}"
+                    target="_blank"
+                    ><i class="fab fa-linkedin"></i> LinkedIn</a
+                  >
+                  <a
+                    href="https://www.facebook.com/sharer/sharer.php?u={{ share_url }}"
+                    target="_blank"
+                    ><i class="fab fa-facebook"></i> Facebook</a
+                  >
+                  <a
+                    href="https://api.whatsapp.com/send?text={{ share_url }}"
+                    target="_blank"
+                    ><i class="fab fa-whatsapp"></i> WhatsApp</a
+                  >
+                  <a
+                    href="https://docs.google.com/document/create?usp=docs_web&url={{ share_url }}"
+                    target="_blank"
+                    ><i class="fab fa-google"></i> Google Docs</a
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+      <footer class="footer">
+        <i>© 2025 Solar Assistant by karemaciu</i> |
+        <span id="status">Online</span>
+      </footer>
+    </div>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

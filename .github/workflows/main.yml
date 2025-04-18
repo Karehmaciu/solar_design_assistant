@@ -1,0 +1,96 @@
+name: Solar Assistant CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly security scan (Sunday at midnight)
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9, '3.10']
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install pytest pytest-cov
+    - name: Lint with flake8
+      run: |
+        pip install flake8
+        # stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    - name: Test with pytest
+      run: |
+        pytest --cov=./ --cov-report=xml
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        FLASK_SECRET: ${{ secrets.FLASK_SECRET }}
+
+  scan-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    - name: Check for dependency updates
+      run: |
+        pip install -r requirements.txt
+        python update_dependencies.py --ci-mode
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy:
+    needs: [test, scan-dependencies]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    # Deployment steps here - uncomment and modify based on your chosen deployment platform
+    # - name: Deploy to Heroku
+    #   uses: akhileshns/heroku-deploy@v3.12.14
+    #   with:
+    #     heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
+    #     heroku_app_name: "solar-assistant-karemaciu"
+    #     heroku_email: ${{ secrets.HEROKU_EMAIL }}
+    
+    # - name: Deploy to Railway
+    #   uses: bervProject/railway-deploy@main
+    #   with:
+    #     railway_token: ${{ secrets.RAILWAY_TOKEN }}
+    
+    # - name: Deploy to Google Cloud Run
+    #   uses: google-github-actions/deploy-cloudrun@main
+    #   with:
+    #     service: solar-assistant
+    #     image: gcr.io/solar-assistant-app/solar-assistant
+    #     credentials: ${{ secrets.GCP_SA_KEY }}
+    
+    - name: Notify deployment status
+      if: always()
+      uses: rtCamp/action-slack-notify@v2
+      env:
+        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        SLACK_COLOR: ${{ job.status }}
+        SLACK_MESSAGE: 'Solar Assistant deployment ${{ job.status }}'
