@@ -116,6 +116,12 @@ def create_app(config_name=None):
     def health_check():
         return jsonify({"status": "healthy", "version": "1.0.0"})
     
+    @app.route("/healthz")
+    @limiter.exempt  # Don't rate limit health checks
+    def healthz():
+        """Health check endpoint for Render monitoring."""
+        return jsonify({"status": "healthy"}), 200
+
     # Error handlers
     @app.errorhandler(404)
     def not_found_error(error):
