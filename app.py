@@ -16,7 +16,6 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 # Security imports
 from flask_talisman import Talisman
-from flask_cors import CORS
 import jwt
 import bcrypt
 import re
@@ -66,8 +65,13 @@ def create_app(config_name=None):
     force_https = app.config.get('ENV', 'production') == 'production'
     Talisman(app, content_security_policy=csp, force_https=force_https)
     
-    # Configure CORS to restrict access to trusted domains
-    CORS(app, resources={r"/*": {"origins": ["http://localhost:*", "https://*.solar-assistant.example.com"]}})
+    # Manually add CORS headers instead of using flask_cors
+    @app.after_request
+    def add_cors_headers(response):
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
     
     # Set up rate limiting
     limiter = Limiter(
@@ -359,6 +363,7 @@ if __name__ == '__main__':
     update_thread.start()
     
     app = create_app()
-    port = int(os.getenv('PORT', 8003))
-    app.run(debug=app.config['DEBUG'], port=port)
+    # The following line has been removed for Render deployment
+    # port = int(os.getenv('PORT', 8003))
+    # app.run(debug=app.config['DEBUG'], port=port)
 
