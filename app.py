@@ -336,13 +336,26 @@ def is_safe_referrer(referrer):
     if not referrer:
         return True  # No referrer might be OK depending on your security posture
     
-    allowed_hosts = [
-        'localhost', 
-        '127.0.0.1', 
-        'solar-assistant.example.com',
-        'solar-design-assistant.onrender.com',  # Add Render domain
-        'www.solar-design-assistant.onrender.com'  # Add www subdomain if needed
-    ]
+    # Initialize allowed hosts with local development hosts
+    allowed_hosts = ['localhost', '127.0.0.1']
+    
+    # Add configured hosts from environment variable
+    app_hosts = os.environ.get('ALLOWED_APP_HOSTS', '')
+    if app_hosts:
+        allowed_hosts.extend([host.strip() for host in app_hosts.split(',')])
+    
+    # Add Render hostname automatically if deployed there
+    render_hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+    if render_hostname:
+        allowed_hosts.append(render_hostname)
+        # Also add www subdomain variant
+        if not render_hostname.startswith('www.'):
+            allowed_hosts.append(f'www.{render_hostname}')
+    
+    # Add example/dev domains
+    allowed_hosts.extend(['solar-assistant.example.com', 'solar-design-assistant.onrender.com'])
+    
+    logger.debug(f"Checking referrer {referrer} against allowed hosts: {allowed_hosts}")
     
     for host in allowed_hosts:
         if host in referrer:
