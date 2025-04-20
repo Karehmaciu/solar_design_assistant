@@ -20,6 +20,7 @@ import jwt
 import bcrypt
 import re
 from forms import PromptForm
+from urllib.parse import urlparse
 
 # Initialize logging
 def setup_logging():
@@ -334,34 +335,28 @@ def contains_suspicious_patterns(value):
 def is_safe_referrer(referrer):
     """Validate that request comes from an allowed origin"""
     if not referrer:
-        return True  # No referrer might be OK depending on your security posture
-    
-    # Initialize allowed hosts with local development hosts
+        return True
+
+    # Start with localhost for dev
     allowed_hosts = ['localhost', '127.0.0.1']
-    
-    # Add configured hosts from environment variable
+
+    # Add any hosts you want via comma‑separated env var
     app_hosts = os.environ.get('ALLOWED_APP_HOSTS', '')
     if app_hosts:
-        allowed_hosts.extend([host.strip() for host in app_hosts.split(',')])
-    
-    # Add Render hostname automatically if deployed there
-    render_hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
-    if render_hostname:
-        allowed_hosts.append(render_hostname)
-        # Also add www subdomain variant
-        if not render_hostname.startswith('www.'):
-            allowed_hosts.append(f'www.{render_hostname}')
-    
-    # Add example/dev domains
-    allowed_hosts.extend(['solar-assistant.example.com', 'solar-design-assistant.onrender.com'])
-    
-    logger.debug(f"Checking referrer {referrer} against allowed hosts: {allowed_hosts}")
-    
-    for host in allowed_hosts:
-        if host in referrer:
-            return True
-    
-    return False
+        allowed_hosts += [h.strip() for h in app_hosts.split(',')]
+
+    # Auto‑include the Render domain when deployed
+    render_host = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+    if render_host:
+        allowed_hosts.append(render_host)
+        # Also allow www.<host>
+        if not render_host.startswith('www.'):
+            allowed_hosts.append(f'www.{render_host}')
+
+    # Finally, check the referrer against our list
+    logger.debug(f"Allowed hosts: {allowed_hosts}, Referrer: {referrer}")
+    ref_host = urlparse(referrer).hostname
+    return ref_host in allowed_hosts
 
 def check_for_updates():
     """Run the dependency update checker in a subprocess"""
