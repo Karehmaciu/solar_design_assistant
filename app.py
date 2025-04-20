@@ -336,7 +336,14 @@ def is_safe_referrer(referrer):
     if not referrer:
         return True  # No referrer might be OK depending on your security posture
     
-    allowed_hosts = ['localhost', '127.0.0.1', 'solar-assistant.example.com']
+    allowed_hosts = [
+        'localhost', 
+        '127.0.0.1', 
+        'solar-assistant.example.com',
+        'solar-design-assistant.onrender.com',  # Add Render domain
+        'www.solar-design-assistant.onrender.com'  # Add www subdomain if needed
+    ]
+    
     for host in allowed_hosts:
         if host in referrer:
             return True
