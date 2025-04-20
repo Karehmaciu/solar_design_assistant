@@ -44,8 +44,12 @@ def create_app(config_name=None):
     load_dotenv()
     
     # Create and configure the app
+    from flask import Flask
     app = Flask(__name__)
     app.config.from_object(get_config(config_name))
+    
+    # Set secret key for sessions
+    app.secret_key = os.getenv("FLASK_SECRET", secrets.token_hex(16))
     
     # Security enhancements
     # Set up Flask-Talisman for security headers (CSP, HSTS, etc.)
@@ -366,4 +370,7 @@ if __name__ == '__main__':
     # The following line has been removed for Render deployment
     # port = int(os.getenv('PORT', 8003))
     # app.run(debug=app.config['DEBUG'], port=port)
+else:
+    # Create app instance for gunicorn to import
+    app = create_app('production')
 

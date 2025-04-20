@@ -3,237 +3,172 @@ import os
 import subprocess
 import pkg_resources
 import argparse
+import re
+from tabulate import tabulate
+from rich import print
+from rich.panel import Panel
+from rich.table import Table
+from rich.console import Console
+import questionary
+from packaging import version
+
 try:
-    import inquirer
-    import requests
-    from packaging import version
-    from tabulate import tabulate
     from colorama import init, Fore, Style
 except ImportError:
     print("Missing required dependencies. Installing now...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "inquirer", "requests", "packaging", "tabulate", "colorama"])
-    import inquirer
-    import requests
-    from packaging import version
-    from tabulate import tabulate
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "colorama"])
     from colorama import init, Fore, Style
 
 # Initialize colorama for colored terminal output
 init()
 
+def get_installed_packages():
+    """Get all installed packages and their versions"""
+    installed_packages = [(d.project_name, d.version) for d in pkg_resources.working_set]
+    return installed_packages
+
 def get_latest_version(package_name):
     """Get the latest version of a package from PyPI"""
     try:
-        response = requests.get(f"https://pypi.org/pypi/{package_name}/json", timeout=5)
-        if response.status_code == 200:
-            return response.json()["info"]["version"]
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "index", "versions", package_name],
+            capture_output=True,
+            text=True
+        )
+        match = re.search(r"Latest:\s+(\S+)", result.stdout)
+        if match:
+            return match.group(1)
         return None
-    except Exception:
+    except Exception as e:
+        print(f"Error checking {package_name}: {e}")
         return None
 
-def check_updates():
-    """Check for updates to dependencies in requirements.txt"""
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    req_path = os.path.join(current_dir, "requirements.txt")
+def check_updates(packages_to_check=None):
+    """Check for updates to installed packages"""
+    installed = get_installed_packages()
     
-    # Check if requirements.txt exists
-    if not os.path.exists(req_path):
-        print(f"{Fore.RED}Error: requirements.txt not found.{Style.RESET_ALL}")
-        return
+    # Filter to specific packages if requested
+    if packages_to_check:
+        installed = [pkg for pkg in installed if pkg[0].lower() in [p.lower() for p in packages_to_check]]
     
-    # Read requirements file
-    with open(req_path, "r") as f:
-        requirements = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+    # Sort packages alphabetically
+    installed.sort(key=lambda x: x[0].lower())
+    
+    console = Console()
+    console.print("Checking for dependency updates...\n")
     
     updates_available = []
-    errors = []
-    
-    # Parse requirements and check for updates
-    for req in requirements:
-        try:
-            # Extract package name and version constraint
-            if "==" in req:
-                package_name, current_version = req.split("==")
-            else:
-                # For requirements without a specific version
-                package_name = req.split(">=")[0].split(">")[0].split("<")[0].split("~=")[0].strip()
+    with console.status("[bold green]Checking package versions...") as status:
+        for i, (pkg_name, current_version) in enumerate(installed):
+            status.update(f"[bold green]Checking {pkg_name} ({i+1}/{len(installed)})...")
+            latest = get_latest_version(pkg_name)
+            if latest and latest != current_version:
                 try:
-                    current_version = pkg_resources.get_distribution(package_name).version
-                except:
-                    errors.append(f"Package '{package_name}' not installed")
-                    continue
-            
-            # Get latest version from PyPI
-            latest_version = get_latest_version(package_name)
-            
-            if latest_version and version.parse(latest_version) > version.parse(current_version):
-                updates_available.append({
-                    "package": package_name,
-                    "current": current_version,
-                    "latest": latest_version
-                })
-        except Exception as e:
-            errors.append(f"Error checking {req}: {str(e)}")
+                    # Only add if the latest version is actually newer
+                    if version.parse(latest) > version.parse(current_version):
+                        updates_available.append((pkg_name, current_version, latest))
+                except Exception:
+                    # If version comparison fails, add it anyway
+                    updates_available.append((pkg_name, current_version, latest))
     
-    return updates_available, errors
+    if not updates_available:
+        console.print(Panel.fit("[bold green]All packages are up to date!", title="Dependency Check"))
+        return []
+    
+    # Format the table
+    table_data = [(i+1, pkg, curr, latest) for i, (pkg, curr, latest) in enumerate(updates_available)]
+    print("\nUpdates available:")
+    print(tabulate(table_data, headers=["#", "Package", "Current Version", "Latest Version"], tablefmt="grid"))
+    
+    return updates_available
 
 def update_packages(packages_to_update):
     """Update selected packages"""
-    success = []
-    failed = []
+    if not packages_to_update:
+        print("No packages selected for update.")
+        return
     
-    for package in packages_to_update:
-        package_name = package["package"]
-        latest_version = package["latest"]
+    console = Console()
+    
+    # Create pip command with all packages to update
+    update_cmd = [sys.executable, "-m", "pip", "install", "--upgrade"]
+    package_specs = []
+    
+    for pkg_name, _, latest_version in packages_to_update:
+        # For the openai package, don't update beyond 0.28.x to maintain compatibility
+        if pkg_name.lower() == "openai":
+            # Find the latest 0.28.x version
+            spec = f"{pkg_name}>=0.28.0,<0.29.0"
+            console.print(f"[bold yellow]Note: Limiting {pkg_name} to v0.28.x for compatibility")
+        # For Flask, stay within 2.x for compatibility
+        elif pkg_name.lower() == "flask":
+            spec = f"{pkg_name}>=2.0.1,<3.0.0"
+            console.print(f"[bold yellow]Note: Limiting {pkg_name} to v2.x for compatibility")
+        # For Werkzeug, stay compatible with Flask 2.x
+        elif pkg_name.lower() == "werkzeug":
+            spec = f"{pkg_name}>=2.0.1,<3.0.0"
+            console.print(f"[bold yellow]Note: Limiting {pkg_name} to v2.x for Flask compatibility")
+        else:
+            spec = f"{pkg_name}=={latest_version}"
         
-        print(f"{Fore.YELLOW}Updating {package_name} to {latest_version}...{Style.RESET_ALL}")
-        
-        try:
-            # Run pip install with the new version
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install", 
-                f"{package_name}=={latest_version}", "--upgrade"
-            ])
-            
-            # Update requirements.txt
-            update_requirements_file(package_name, latest_version)
-            
-            success.append(package_name)
-        except Exception as e:
-            failed.append(f"{package_name}: {str(e)}")
+        package_specs.append(spec)
     
-    return success, failed
-
-def update_requirements_file(package_name, new_version):
-    """Update the version of a package in requirements.txt"""
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    req_path = os.path.join(current_dir, "requirements.txt")
+    update_cmd.extend(package_specs)
     
-    with open(req_path, "r") as f:
-        lines = f.readlines()
+    console.print(f"\n[bold]Running: {' '.join(update_cmd)}")
+    console.print(Panel.fit("[bold yellow]Updating packages. This may take a few minutes...", title="Update Progress"))
     
-    with open(req_path, "w") as f:
-        for line in lines:
-            if line.strip().startswith(f"{package_name}=="):
-                f.write(f"{package_name}=={new_version}\n")
-            else:
-                f.write(line)
-
-def is_security_update(package, current_version, latest_version):
-    """Determine if an update is likely security-related based on version pattern"""
-    # For now, consider any patch version update potentially security-related
-    current_parts = current_version.split('.')
-    latest_parts = latest_version.split('.')
+    result = subprocess.run(update_cmd, capture_output=True, text=True)
     
-    # If major/minor versions differ, it's likely not just a security patch
-    if len(current_parts) >= 2 and len(latest_parts) >= 2:
-        if current_parts[0] != latest_parts[0] or current_parts[1] != latest_parts[1]:
-            return False
-    
-    # Check against known vulnerable packages
-    try:
-        response = requests.get(
-            f"https://pypi.org/pypi/{package}/json",
-            timeout=5
-        )
-        if response.status_code == 200:
-            releases = response.json().get("releases", {})
-            if latest_version in releases:
-                # Look for security-related keywords in release notes
-                release_info = releases[latest_version]
-                for item in release_info:
-                    description = item.get("description", "").lower()
-                    if any(keyword in description for keyword in ["security", "vulnerability", "cve", "fix", "exploit", "attack"]):
-                        return True
-    except Exception:
-        # If we can't determine, err on the side of caution for security updates
-        pass
-        
-    return False
+    if result.returncode == 0:
+        console.print(Panel.fit("[bold green]Packages updated successfully!", title="Update Complete"))
+        return True
+    else:
+        console.print(Panel.fit(f"[bold red]Error updating packages:\n{result.stderr}", title="Update Failed"))
+        return False
 
 def main():
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Check for dependency updates")
-    parser.add_argument("--ci-mode", action="store_true", help="Run in CI mode (non-interactive)")
-    args = parser.parse_args()
-    
-    print(f"{Fore.CYAN}Checking for dependency updates...{Style.RESET_ALL}")
-    
-    updates_available, errors = check_updates()
-    
-    if errors:
-        print(f"\n{Fore.RED}Errors encountered:{Style.RESET_ALL}")
-        for error in errors:
-            print(f"- {error}")
-    
-    if not updates_available:
-        print(f"{Fore.GREEN}All dependencies are up to date!{Style.RESET_ALL}")
-        return
-    
-    # Display available updates in a table
-    print(f"\n{Fore.CYAN}Updates available:{Style.RESET_ALL}")
-    
-    table_data = []
-    for i, pkg in enumerate(updates_available, 1):
-        table_data.append([
-            i, 
-            pkg["package"], 
-            pkg["current"], 
-            pkg["latest"]
-        ])
-    
-    print(tabulate(
-        table_data,
-        headers=["#", "Package", "Current Version", "Latest Version"],
-        tablefmt="pretty"
-    ))
-    
-    # In CI mode, just report findings and exit with appropriate status code
-    if args.ci_mode:
-        print(f"{Fore.YELLOW}Running in CI mode - not updating packages{Style.RESET_ALL}")
-        security_updates = [p for p in updates_available if is_security_update(p["package"], p["current"], p["latest"])]
-        
-        if security_updates:
-            print(f"{Fore.RED}Security updates available:{Style.RESET_ALL}")
-            for pkg in security_updates:
-                print(f"- {pkg['package']} ({pkg['current']} → {pkg['latest']})")
-            sys.exit(1)  # Exit with error code to trigger notification in CI
-        else:
-            print(f"{Fore.GREEN}No urgent security updates required{Style.RESET_ALL}")
-            sys.exit(0)
-    
-    # Interactive mode for user selection
-    choices = [
-        inquirer.Checkbox('packages',
-                          message="Select packages to update (space to select, enter to confirm):",
-                          choices=[(f"{pkg['package']} ({pkg['current']} → {pkg['latest']})", i) 
-                                   for i, pkg in enumerate(updates_available)])
+    # Define packages critical to the Solar Assistant app
+    core_packages = [
+        "flask", "werkzeug", "wtforms", "flask-wtf", "gunicorn", "openai", 
+        "python-dotenv", "python-docx", "flask-limiter", "flask-talisman", 
+        "markupsafe", "requests", "packaging", "pytest", "pyjwt", "bcrypt"
     ]
     
-    answers = inquirer.prompt(choices)
+    # Check for updates to core packages
+    updates_available = check_updates(core_packages)
     
-    if not answers or not answers['packages']:
-        print(f"{Fore.YELLOW}No packages selected for update.{Style.RESET_ALL}")
+    if not updates_available:
         return
     
-    # Get selected packages
-    selected_indices = answers['packages']
-    selected_packages = [updates_available[i] for i in selected_indices]
+    # Create choices for the questionary
+    choices = [
+        {
+            "name": f"{pkg} ({curr} → {latest})",
+            "value": (pkg, curr, latest),
+            "checked": False  # Default to unchecked
+        }
+        for pkg, curr, latest in updates_available
+    ]
     
-    # Update selected packages
-    success, failed = update_packages(selected_packages)
+    # Safe updates that won't break compatibility
+    safe_packages = ["python-dotenv", "python-docx", "flask-talisman", "requests", "packaging"]
     
-    if success:
-        print(f"\n{Fore.GREEN}Successfully updated:{Style.RESET_ALL}")
-        for pkg in success:
-            print(f"- {pkg}")
+    # Pre-select safe packages
+    for choice in choices:
+        if choice["value"][0].lower() in safe_packages:
+            choice["checked"] = True
     
-    if failed:
-        print(f"\n{Fore.RED}Failed to update:{Style.RESET_ALL}")
-        for failure in failed:
-            print(f"- {failure}")
+    # Let user select packages to update
+    selected = questionary.checkbox(
+        "Select packages to update (space to select, enter to confirm):",
+        choices=choices
+    ).ask()
     
-    print(f"\n{Fore.CYAN}Update process completed.{Style.RESET_ALL}")
+    if selected:
+        update_packages(selected)
+    else:
+        print("No packages selected for update.")
 
 if __name__ == "__main__":
     main()
