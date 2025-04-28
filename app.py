@@ -43,15 +43,19 @@ logger = setup_logging()
 def create_app(config_name=None):
     # Load environment variables
     load_dotenv()
-    
+
     # Create and configure the app
     from flask import Flask
     app = Flask(__name__)
     app.config.from_object(get_config(config_name))
-    
-    # Set secret key for sessions
-    app.secret_key = os.getenv("FLASK_SECRET", secrets.token_hex(16))
-    
+
+    # Disable CSRF in testing mode to allow form submissions in tests
+    if app.config.get('TESTING'):
+        app.config['WTF_CSRF_ENABLED'] = False
+
+    # Set secret key for sessions from config
+    app.secret_key = app.config['SECRET_KEY']
+
     # Security enhancements
     # Set up Flask-Talisman for security headers (CSP, HSTS, etc.)
     csp = {
@@ -86,23 +90,30 @@ def create_app(config_name=None):
         storage_uri="memory://",
     )
     
-    # Initialize OpenAI client - use module-level API directly
-    try:
-        api_key = app.config.get('OPENAI_API_KEY')
-        if not api_key:
-            logger.error("OpenAI API key is missing")
-            raise ValueError("OpenAI API key is required")
-        key_prefix = api_key[:4] if len(api_key) > 4 else ""
-        key_suffix = api_key[-4:] if len(api_key) > 4 else ""
-        logger.info(f"Setting OpenAI API key: {key_prefix}...{key_suffix}")
-        openai.api_key = api_key
-        client = openai  # use module-level API
-        logger.info("OpenAI client set to module-level API successfully")
-    except Exception as e:
-        logger.error(f"Error initializing OpenAI client: {e}")
-        import traceback; logger.error(traceback.format_exc())
-        client = None  # Handle None in routes
-    
+    # Initialize OpenAI client
+    # In testing, use OpenAI class directly so tests can patch openai.OpenAI
+    if app.config.get('TESTING'):
+        client = openai.OpenAI()
+    else:
+        try:
+            api_key = app.config.get('OPENAI_API_KEY')
+            if not api_key:
+                logger.error("OpenAI API key is missing")
+                raise ValueError("OpenAI API key is required")
+            logger.info("Configuring OpenAI client")
+            # Use class if available
+            try:
+                client = openai.OpenAI(api_key=api_key)
+                logger.info("OpenAI client initialized via class")
+            except AttributeError:
+                openai.api_key = api_key
+                client = openai
+                logger.info("OpenAI client set to module-level API")
+        except Exception as e:
+            logger.error(f"Error initializing OpenAI client: {e}")
+            import traceback; logger.error(traceback.format_exc())
+            client = None
+
     # Add security middleware
     @app.before_request
     def security_checks():
@@ -160,16 +171,13 @@ def create_app(config_name=None):
         form = PromptForm()
         response_text = ""
         error_message = None
-        
-        # Check if OpenAI client is properly initialized
+
+        # If client not set, show error
         if client is None:
             error_message = "OpenAI service is currently unavailable. Please try again later."
             logger.error("Route accessed with uninitialized OpenAI client")
-            return render_template('index.html', 
-                                 form=form,
-                                 response=session.get('response_text', ''), 
-                                 error=error_message)
-            
+            return render_template('index.html', form=form, response=session.get('response_text', ''), error=error_message)
+
         # Load the professional system prompt from the external file
         try:
             with open(app.config['PROMPT_PATH'], "r", encoding="utf-8") as f:
@@ -225,9 +233,8 @@ def create_app(config_name=None):
                 system_prompt += "\n" + template_content
         except FileNotFoundError:
             logger.error(f"Template file not found: {app.config['TEMPLATE_PATH']}")
-        
+
         if form.validate_on_submit():
-            # Input validation is handled by WTForms
             prompt = form.prompt.data
             # Adjust system prompt to respond in the selected language
             lang_map = {
@@ -243,11 +250,10 @@ def create_app(config_name=None):
             # Instruct the AI to respond in the chosen language
             system_prompt = f"{system_prompt}\nPlease respond in {lang_name}."
 
-            # Log the request (avoid logging full prompt in production)
+            # Wrap actual chat call in try/except
             logger.info(f"Processing prompt of length {len(prompt)}")
-            
             try:
-                response = client.ChatCompletion.create(
+                response = client.chat.completions.create(
                     model=app.config['OPENAI_MODEL'],
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -255,16 +261,9 @@ def create_app(config_name=None):
                     ]
                 )
                 response_text = response.choices[0].message.content
-                
-                # Convert Markdown line breaks to HTML <br> tags for proper display
-                # This preserves formatting in the HTML response
                 formatted_response = response_text.replace('\n', '<br>')
-                
-                # Store both versions - original for download, formatted for display
                 session['response_text'] = response_text
                 session['formatted_response'] = formatted_response
-                
-                # Log success
                 logger.info(f"Successfully generated response of length {len(response_text)}")
             except Exception as e:
                 logger.error(f"OpenAI API Error: {e}")
@@ -272,10 +271,10 @@ def create_app(config_name=None):
                 response_text = "Sorry, there was an error processing your request."
                 session['response_text'] = response_text
                 session['formatted_response'] = response_text
-        
+
         # Use the formatted response for display if available
         display_response = session.get('formatted_response', session.get('response_text', ''))
-        
+
         return render_template('index.html', 
                               form=form,
                               response=display_response, 
