@@ -91,27 +91,34 @@ def create_app(config_name=None):
     )
     
     # Initialize OpenAI client
-    # In testing, use OpenAI class directly so tests can patch openai.OpenAI
+    # In testing, handle both old and new OpenAI package versions
     if app.config.get('TESTING'):
-        client = openai.OpenAI()
+        try:
+            # Try new-style client first
+            client = openai.OpenAI(api_key="test-key")
+        except (AttributeError, TypeError):
+            # Fall back to old-style for older versions
+            openai.api_key = "test-key"
+            client = openai
     else:
         try:
             api_key = app.config.get('OPENAI_API_KEY')
             if not api_key:
                 logger.error("OpenAI API key is missing")
                 raise ValueError("OpenAI API key is required")
-            logger.info("Configuring OpenAI client")
-            # Use class if available
+            
+            # Try new-style client first
             try:
                 client = openai.OpenAI(api_key=api_key)
                 logger.info("OpenAI client initialized via class")
-            except AttributeError:
+            except (AttributeError, TypeError):
+                # Fall back to old-style for older versions
                 openai.api_key = api_key
                 client = openai
                 logger.info("OpenAI client set to module-level API")
         except Exception as e:
             logger.error(f"Error initializing OpenAI client: {e}")
-            import traceback; logger.error(traceback.format_exc())
+            logger.error(traceback.format_exc())
             client = None
 
     # Add security middleware

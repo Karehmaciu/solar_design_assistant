@@ -4,7 +4,7 @@ from datetime import timedelta
 
 class Config:
     """Base configuration class"""
-    SECRET_KEY = os.getenv("FLASK_SECRET", secrets.token_hex(32))
+    SECRET_KEY = os.getenv("FLASK_SECRET") or "dev-key-NOT-FOR-PRODUCTION-USE"
     SESSION_COOKIE_HTTPONLY = True
     PERMANENT_SESSION_LIFETIME = timedelta(hours=4)
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
