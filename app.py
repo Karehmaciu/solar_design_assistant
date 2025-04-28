@@ -52,24 +52,25 @@ def create_app(config_name=None):
     app.config.from_object(get_config(config_name))
     
     # Important: Set the secret key early and explicitly
-    app.secret_key = app.config.get('SECRET_KEY') or os.getenv('FLASK_SECRET') or secrets.token_hex(16)
+    secret_key = app.config.get('SECRET_KEY') or os.getenv('FLASK_SECRET') or secrets.token_hex(16)
+    app.secret_key = secret_key
     
     # Special handling for test environment
     testing = config_name == "testing" or app.config.get('TESTING', False)
     if testing:
         app.config['TESTING'] = True
         app.config['WTF_CSRF_ENABLED'] = False
-        app.config['SERVER_NAME'] = 'localhost'
         # Ensure we have a secret key for testing
         if not app.secret_key or app.secret_key == 'dev-key-NOT-FOR-PRODUCTION-USE':
             app.secret_key = 'test-secret-key-for-pytest'
-    
-    # Security enhancements - but skip in testing mode
-    if not testing:
-        # Set up Flask-Talisman for security headers
+        
+        # Skip Talisman and other security middleware in testing
+        logger.info(f"Testing mode detected. Skipping security middleware.")
+    else:
+        # Set up Flask-Talisman for security headers (only in non-testing environments)
         csp = {
             'default-src': "'self'",
-            'style-src': ["'self'", "'unsafe-inline'"],  # Allow inline styles for simplicity
+            'style-src': ["'self'", "'unsafe-inline'"],
             'script-src': ["'self'"],
             'img-src': ["'self'", "data:"],
             'font-src': ["'self'"],
@@ -81,7 +82,8 @@ def create_app(config_name=None):
         
         # Only enable HTTPS in production
         force_https = app.config.get('ENV', 'production') == 'production'
-        Talisman(app, content_security_policy=csp, force_https=force_https)
+        if not testing:
+            Talisman(app, content_security_policy=csp, force_https=force_https)
     
     # Manually add CORS headers instead of using flask_cors
     @app.after_request
