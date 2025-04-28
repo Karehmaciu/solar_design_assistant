@@ -2,10 +2,13 @@ import pytest
 from app import create_app
 import os
 from unittest.mock import patch, MagicMock
+from types import SimpleNamespace
 
 @pytest.fixture
 def app():
     """Create and configure a Flask app for testing."""
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+    os.environ['FLASK_SECRET'] = 'test-secret-key'
     app = create_app("testing")
     return app
 
@@ -31,23 +34,27 @@ def test_clear_session(client):
     with client.session_transaction() as session:
         assert 'response_text' not in session
 
-@patch('openai.OpenAI')
-def test_prompt_submission(mock_openai, client):
+# Create a dummy completion object that mimics OpenAI's response structure
+dummy_completion = SimpleNamespace(
+    choices=[
+        SimpleNamespace(
+            message=SimpleNamespace(content="Test AI response")
+        )
+    ]
+)
+
+@patch("openai.resources.chat.completions.Completions.create", return_value=dummy_completion)
+def test_prompt_submission(mock_create, client):
     """Test submitting a prompt and getting a response."""
-    # Setup the mock
-    mock_client = MagicMock()
-    mock_openai.return_value = mock_client
+    response = client.post('/', data={
+        'prompt': 'Test prompt',
+        'language': 'en'
+    })
     
-    mock_response = MagicMock()
-    mock_response.choices[0].message.content = "Test AI response"
-    mock_client.chat.completions.create.return_value = mock_response
-    
-    # Submit a test prompt
-    response = client.post('/', data={'prompt': 'Test prompt'})
-    
-    # Verify the response
+    # Check the response
     assert response.status_code == 200
-    assert b'Test AI response' in response.data
+    formatted_response = "Test AI response".replace('\n', '<br>')
+    assert formatted_response.encode() in response.data
 
 def test_view_report(client):
     """Test the report viewing page."""
@@ -60,9 +67,6 @@ def test_view_report(client):
 
 def test_download_report_no_content(client):
     """Test download report when no content is available."""
-    # Clear the session to ensure no response text
-    client.get('/clear')
-    
-    # Try to download a report
+    # Try to download a report without setting session content
     response = client.get('/download-report')
     assert response.status_code == 302  # Should redirect
