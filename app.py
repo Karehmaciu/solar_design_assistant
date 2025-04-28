@@ -47,18 +47,26 @@ def create_app(config_name=None):
 
     # Create and configure the app
     app = Flask(__name__)
+    
+    # Load config from object
     app.config.from_object(get_config(config_name))
-
-    # Disable CSRF in testing mode to allow form submissions in tests
-    if app.config.get('TESTING'):
+    
+    # Important: Set the secret key early and explicitly
+    app.secret_key = app.config.get('SECRET_KEY') or os.getenv('FLASK_SECRET') or secrets.token_hex(16)
+    
+    # Special handling for test environment
+    testing = config_name == "testing" or app.config.get('TESTING', False)
+    if testing:
+        app.config['TESTING'] = True
         app.config['WTF_CSRF_ENABLED'] = False
-
-    # Set secret key for sessions from config
-    app.secret_key = app.config['SECRET_KEY']
-
+        app.config['SERVER_NAME'] = 'localhost'
+        # Ensure we have a secret key for testing
+        if not app.secret_key or app.secret_key == 'dev-key-NOT-FOR-PRODUCTION-USE':
+            app.secret_key = 'test-secret-key-for-pytest'
+    
     # Security enhancements - but skip in testing mode
-    if not app.config.get('TESTING'):
-        # Set up Flask-Talisman for security headers (CSP, HSTS, etc.)
+    if not testing:
+        # Set up Flask-Talisman for security headers
         csp = {
             'default-src': "'self'",
             'style-src': ["'self'", "'unsafe-inline'"],  # Allow inline styles for simplicity
