@@ -48,4 +48,6 @@ build/
 # Windows
 Thumbs.db
 ehthumbs.db
-Desktop.ini
+Desktop.ini 
+# never allow the accidental space-in-name file
+olar_design_agent.py web_app.py
