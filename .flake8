@@ -7,3 +7,13 @@ exclude =
     venv,
     build,
     dist
+ignore =
+    F401,  # unused imports
+    E302,  # expected 2 blank lines
+    E305,  # expected 2 blank lines after class/function
+    W291,  # trailing whitespace
+    W292,  # no newline at end of file
+    W293,  # blank line contains whitespace
+    E128,  # continuation indent
+    E702,  # multiple statements on one line
+    W391   # blank line at end of file
