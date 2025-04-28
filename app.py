@@ -229,7 +229,20 @@ def create_app(config_name=None):
         if form.validate_on_submit():
             # Input validation is handled by WTForms
             prompt = form.prompt.data
-            
+            # Adjust system prompt to respond in the selected language
+            lang_map = {
+                'en': 'English',
+                'sw': 'Kiswahili',
+                'ar': 'Arabic',
+                'am': 'Amharic',
+                'es': 'Spanish',
+                'fr': 'French'
+            }
+            selected = form.language.data
+            lang_name = lang_map.get(selected, 'English')
+            # Instruct the AI to respond in the chosen language
+            system_prompt = f"{system_prompt}\nPlease respond in {lang_name}."
+
             # Log the request (avoid logging full prompt in production)
             logger.info(f"Processing prompt of length {len(prompt)}")
             
