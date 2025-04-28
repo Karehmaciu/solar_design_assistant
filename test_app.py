@@ -3,19 +3,33 @@ from app import create_app
 import os
 from unittest.mock import patch, MagicMock
 from types import SimpleNamespace
+import openai
+import traceback
 
 @pytest.fixture
 def app():
     """Create and configure a Flask app for testing."""
+    # Set environment variables for testing
     os.environ['OPENAI_API_KEY'] = 'test-key'
     os.environ['FLASK_SECRET'] = 'test-secret-key'
+    
+    # Create app with testing config
     app = create_app("testing")
-    return app
+    
+    # Configure the app for testing
+    app.config['TESTING'] = True
+    app.config['WTF_CSRF_ENABLED'] = False
+    app.config['SERVER_NAME'] = 'localhost'  # Required for url_for in tests
+    
+    # Yield the app for testing
+    yield app
 
 @pytest.fixture
 def client(app):
     """A test client for the app."""
-    return app.test_client()
+    with app.test_client() as client:
+        with app.app_context():
+            yield client
 
 def test_index_get(client):
     """Test that the index page loads correctly."""
@@ -34,7 +48,17 @@ def test_clear_session(client):
     with client.session_transaction() as session:
         assert 'response_text' not in session
 
+# Check if newer OpenAI SDK is available
+has_openai_client = hasattr(openai, "OpenAI")
+
+# Create a patch target based on OpenAI SDK version
+if has_openai_client:
+    mock_target = "openai.resources.chat.completions.Completions.create"
+else:
+    mock_target = "openai.ChatCompletion.create"
+
 # Create a dummy completion object that mimics OpenAI's response structure
+# This works for both SDK versions
 dummy_completion = SimpleNamespace(
     choices=[
         SimpleNamespace(
@@ -43,18 +67,21 @@ dummy_completion = SimpleNamespace(
     ]
 )
 
-@patch("openai.resources.chat.completions.Completions.create", return_value=dummy_completion)
+@patch(mock_target, return_value=dummy_completion)
 def test_prompt_submission(mock_create, client):
     """Test submitting a prompt and getting a response."""
-    response = client.post('/', data={
-        'prompt': 'Test prompt',
-        'language': 'en'
-    })
-    
-    # Check the response
-    assert response.status_code == 200
-    formatted_response = "Test AI response".replace('\n', '<br>')
-    assert formatted_response.encode() in response.data
+    try:
+        response = client.post('/', data={
+            'prompt': 'Test prompt',
+            'language': 'en'
+        })
+        
+        # Check the response
+        assert response.status_code == 200
+        formatted_response = "Test AI response".replace('\n', '<br>')
+        assert formatted_response.encode() in response.data
+    except Exception as e:
+        pytest.fail(f"Test failed with exception: {str(e)}\n{traceback.format_exc()}")
 
 def test_view_report(client):
     """Test the report viewing page."""
