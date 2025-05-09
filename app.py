@@ -114,6 +114,9 @@ def create_app(config_name=None):
         return jsonify({"status": "healthy"}), 200
 
     # Initialize OpenAI client with better error handling for tests
+    # Make client available at app level so routes can access it
+    app.openai_client = None
+    
     try:
         api_key = app.config.get('OPENAI_API_KEY') or os.getenv('OPENAI_API_KEY')
         if not api_key:
@@ -126,11 +129,10 @@ def create_app(config_name=None):
                 logger.info("Using test API key in testing mode")
         
         # Try both client styles based on what's available
-        client = None
         # New style client (OpenAI v1.0.0+)
         if hasattr(openai, "OpenAI"):
             try:
-                client = openai.OpenAI(api_key=api_key)
+                app.openai_client = openai.OpenAI(api_key=api_key)
                 logger.info("OpenAI client initialized via class")
             except Exception as e:
                 if not app.config.get('TESTING'):
@@ -138,10 +140,10 @@ def create_app(config_name=None):
                     raise
         
         # Legacy style fallback
-        if client is None:
+        if app.openai_client is None:
             try:
                 openai.api_key = api_key
-                client = openai
+                app.openai_client = openai
                 logger.info("OpenAI client set to module-level API")
             except Exception as e:
                 if not app.config.get('TESTING'):
@@ -149,8 +151,8 @@ def create_app(config_name=None):
                     raise
         
         # For testing, create a basic client stub if needed
-        if app.config.get('TESTING') and client is None:
-            client = MagicMock()
+        if app.config.get('TESTING') and app.openai_client is None:
+            app.openai_client = MagicMock()
             logger.info("Created mock OpenAI client for testing")
             
     except Exception as e:
@@ -158,10 +160,9 @@ def create_app(config_name=None):
             logger.error(f"Error initializing OpenAI client: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            client = None
         else:
             # For testing, create a basic client stub
-            client = MagicMock()
+            app.openai_client = MagicMock()
             logger.info("Created mock OpenAI client for testing after error")
 
     # Add security middleware
@@ -211,7 +212,7 @@ def create_app(config_name=None):
         error_message = None
 
         # If client not set, show error
-        if client is None:
+        if app.openai_client is None:
             error_message = "OpenAI service is currently unavailable. Please try again later."
             logger.error("Route accessed with uninitialized OpenAI client")
             return render_template('index.html', form=form, response=session.get('response_text', ''), error=error_message)
@@ -291,14 +292,28 @@ def create_app(config_name=None):
             # Wrap actual chat call in try/except
             logger.info(f"Processing prompt of length {len(prompt)}")
             try:
-                response = client.chat.completions.create(
-                    model=app.config['OPENAI_MODEL'],
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt}
-                    ]
-                )
-                response_text = response.choices[0].message.content
+                # Handle both new and legacy OpenAI client styles
+                if hasattr(app.openai_client, 'chat') and hasattr(app.openai_client.chat, 'completions'):
+                    # New style client (v1.0.0+)
+                    response = app.openai_client.chat.completions.create(
+                        model=app.config['OPENAI_MODEL'],
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ]
+                    )
+                    response_text = response.choices[0].message.content
+                else:
+                    # Legacy style client
+                    response = app.openai_client.ChatCompletion.create(
+                        model=app.config['OPENAI_MODEL'],
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ]
+                    )
+                    response_text = response.choices[0].message.content
+                
                 formatted_response = response_text.replace('\n', '<br>')
                 session['response_text'] = response_text
                 session['formatted_response'] = formatted_response
@@ -322,6 +337,11 @@ def create_app(config_name=None):
     def robots():
         """Serve robots.txt from static folder"""
         return app.send_static_file('robots.txt')
+        
+    @app.route('/favicon.ico')
+    def favicon():
+        """Serve favicon.ico from static folder"""
+        return app.send_static_file('favicon.ico')
         
     @app.route('/clear')
     def clear():
