@@ -318,6 +318,11 @@ def create_app(config_name=None):
                               response=display_response, 
                               error=error_message)
     
+    @app.route('/robots.txt')
+    def robots():
+        """Serve robots.txt from static folder"""
+        return app.send_static_file('robots.txt')
+        
     @app.route('/clear')
     def clear():
         session.pop('response_text', None)

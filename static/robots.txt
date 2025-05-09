@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /view-report
+Disallow: /download-report
+Disallow: /clear
+
+# Allow LinkedIn Bot full access
+User-agent: LinkedInBot
+Allow: /
